@@ -1,5 +1,5 @@
-#define IN_ONE 12
-#define IN_TWO 13
+#define IN_ONE 13
+#define IN_TWO 12
 
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
@@ -9,15 +9,15 @@
 
 double input_angle, angle_output;
 double set_angle = 0;
-double kp = 1.0, ki = 1.0, kd = 1.0;
+double kp = 1, ki = 0.0, kd = 5;
+float integral = 0;
+float prev_error = 0;
   
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 
-PID seasaw_pid(&input_angle, &angle_output, &set_angle, kp, ki, kd, DIRECT);
+// PID seasaw_pid(&input_angle, &angle_output, &set_angle, kp, ki, kd, DIRECT);
 
-// Ultrasonic sensor pins.
-const int set_trig_pin = 9;
-const int set_echoPin = 10;
+// // Ultrasonic sensor pins.  
 
 // Motor driver pins.
 const int motor_pin = 11;
@@ -27,14 +27,13 @@ float set_duration, set_position;
 void setup() {
   Serial.begin(9600);
 
-  Serial.print("starting");
   // Set motor pins for direction.
   pinMode(IN_ONE, OUTPUT);
   pinMode(IN_TWO, OUTPUT);
 
-  // Pins for set position sensor.
-  pinMode(set_trig_pin, OUTPUT);
-  pinMode(set_echoPin, INPUT);
+  // // Pins for set position sensor.
+  // pinMode(set_trig_pin, OUTPUT);
+  // pinMode(set_echoPin, INPUT);
 
   Serial.println("Orientation Sensor Test"); Serial.println("");
   
@@ -45,9 +44,9 @@ void setup() {
     while(1);
   }
 
-  // Initialize PID
-  seasaw_pid.SetMode(AUTOMATIC);
-  seasaw_pid.SetSampleTime(10); 
+  // // Initialize PID
+  // seasaw_pid.SetMode(AUTOMATIC);
+  // seasaw_pid.SetSampleTime(10); 
   
   delay(1000);
     
@@ -69,28 +68,25 @@ void loop(void)
 
   input_angle = event.orientation.y;            // From -30 degrees to 30 degrees.
   set_angle = 20;                               // Desired angle.
-
-  // Retrieve distance of set point.
-  digitalWrite(set_trig_pin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(set_trig_pin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(set_trig_pin, LOW);
-
-  set_duration = pulseIn(set_echoPin, HIGH);
-  set_position = (set_duration*.0343)/2;
-  Serial.print("Distance: ");
-  Serial.println(set_position);
   
+  float error = abs(set_angle - input_angle);
+  integral = integral + (error*100);
+  float derivative = (error-prev_error)/100;
+  float output = (kp*error)+(ki*integral)+(kd*derivative);
+  prev_error = error;
+  // Serial.print("Angle Error: ");
+  // Serial.println(abs(set_angle-input_angle));
+  // Serial.print("Current Angle: ");
+  // Serial.println(input_angle);
   // Compute the PID based on angle error.
-  seasaw_pid.Compute();
+  // seasaw_pid.Compute();
 
   // Set the direction of the motor using the input pins.
-  if(input_angle > 0){
+  if(set_angle-input_angle > 1){
     digitalWrite(IN_ONE, HIGH);
     digitalWrite(IN_TWO, LOW);
   }
-  else if(input_angle < 0){
+  else if(set_angle-input_angle < -1){
     digitalWrite(IN_ONE, LOW);
     digitalWrite(IN_TWO, HIGH);
   }
@@ -99,10 +95,15 @@ void loop(void)
     digitalWrite(IN_TWO, LOW);
   }
 
-  // Generate PWM for DC Motors (Based on angle).
-  int motor_speed = map(angle_output, -30, 30, 0, 255);
-  motor_speed = constrain(motor_speed, 0, 255);
-
+  // // Generate PWM for DC Motors (Based on angle).
+  Serial.print("Current Angle: ");
+  Serial.println(input_angle);
+  Serial.print("error: ");
+  Serial.println(error);
+  int motor_speed = map(output, 0, 180, 80, 100);
+  motor_speed = constrain(motor_speed, 80, 100);
+  Serial.print("Motor Speed: ");
+  Serial.println(motor_speed);
   // Apply PWM signal to control motor speed
   analogWrite(motor_pin, motor_speed);
   
